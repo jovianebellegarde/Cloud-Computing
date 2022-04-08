@@ -1,0 +1,85 @@
+import boto3
+import os
+import stat
+
+
+ec2 = boto3.resource('ec2')
+
+def make_key_pair():
+    key_pair = ec2.create_key_pair(KeyName='key_pair_lab')
+    key_value = key_pair.key_material
+    print(key_value)
+    try:
+        f = open('key_pair_lab.pem', 'w')
+        f.write(key_value)
+        f.close()
+    except Exception as error:
+        print(error)
+    os.chmod('key_pair_lab.pem', stat.S_IREAD)
+
+
+# https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
+# https://stackoverflow.com/questions/32215987/how-to-specify-root-volume-size-of-core-os-ec2-instance-using-boto3#
+# https://hands-on.cloud/working-with-vpc-in-python-using-boto3/#h-how-to-manage-security-groups-using-boto3
+def create_instance(security_group_ids):
+    ec2_instance = ec2.create_instances(BlockDeviceMappings=[{
+        'DeviceName': '/dev/xvda',
+        'Ebs': {
+            'VolumeSize': 10
+        }
+    }],
+        SecurityGroupIds=[security_group_ids],
+        ImageId='ami-033b95fb8079dc481',
+        MinCount=1,
+        MaxCount=1,
+        InstanceType='t2.micro',
+        KeyName='key_pair_lab'
+    )
+
+
+# https://hands-on.cloud/working-with-vpc-in-python-using-boto3/#h-how-to-manage-security-groups-using-boto3
+def create_security_groups(description, group_name):
+    ec2_response = ec2.create_security_group(
+        Description=description,
+        GroupName=group_name,
+        TagSpecifications=[{
+            'ResourceType': 'security-group',
+            'Tags': [{
+                'Key': 'Name',
+                'Value': group_name
+            }]
+        }]
+    )
+    return ec2_response
+
+
+# https://hands-on.cloud/working-with-vpc-in-python-using-boto3/#h-how-to-manage-security-groups-using-boto3
+def create_ingress(security_group_id):
+    address = '0.0.0.0' # Placeholder for IP address
+    ingress_rule = security_group_id.authorize_ingress(
+        IpPermissions=[{
+            'IpProtocol': 'tcp',
+            'FromPort': 80,
+            'ToPort': 80,
+            'IpRanges': [{
+                'CidrIp': '0.0.0.0/0'
+            }]
+        }, {
+            'IpProtocol': 'tcp',
+            'FromPort': 22,
+            'ToPort': 22,
+            'IpRanges': [{
+                'CidrIp': f'{address}/0'
+            }]
+        }]
+    )
+
+
+security_group_description = 'Lab 2 Security Group Description'
+security_group_name = 'cs6620-ec2-lab2'
+
+security_group = create_security_groups(security_group_description,
+                                        security_group_name)
+make_key_pair()
+create_ingress(security_group)
+create_instance(security_group.id)
